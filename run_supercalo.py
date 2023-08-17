@@ -712,7 +712,7 @@ if __name__ == '__main__':
                 1, args.device,
                 which_ds=args.which_ds, batch_size=args.batch_size, **preprocessing_kwargs)                                                                                                                                                              
 
-        flow_1, optimizer_1, schedule_1 = build_flow_1(DEPTH, 1, args, args.hidden_size)
+        flow_1, optimizer_1, schedule_1 = build_flow_1(DEPTH, 1, args, 256)
 
         if args.train:
             print("Training Flow-I ...")
