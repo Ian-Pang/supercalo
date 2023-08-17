@@ -1,7 +1,7 @@
 # pylint: disable=invalid-name
-""" Dataloader for calorimeter data of upcalo
+""" Dataloader for calorimeter data used in SuperCalo study
 
-    by Ian Pang
+    by Ian Pang, John Andrew Raine and David Shih
 
 """
 
@@ -16,7 +16,6 @@ from torch.utils.data import Dataset, DataLoader
 def add_noise(input_array, noise_level=1e-4):
     noise = np.random.rand(*input_array.shape)*noise_level
     return input_array+noise
-    #return (input_array+noise)/(1.+noise_level)
 
 ALPHA = 1e-6
 def logit(x):
@@ -60,6 +59,57 @@ def pad_back(array: np.ndarray, target_length: int, axis: int = 0) -> np.ndarray
     
     return np.pad(array, pad_width=npad, mode='constant', constant_values=0)
 
+class CaloDataLayerEnergy(Dataset):
+    """ Dataloader for E_i of each layer (flow-1)"""
+    def __init__(self, path_to_file, which_ds='2',
+                 beginning_idx=0, data_length=100000,
+                 **preprocessing_kwargs):
+        """
+        Args:
+            path_to_file (string): path to .hdf5 file
+            which_ds ('2' or '3'): which dataset (kind of redundant with path_to_file name)
+            beginning_idx (int): at which index to start taking the data from
+            data_length (int): how many events to take
+            preprocessing_kwargs (dict): dictionary containing parameters for preprocessing
+                                         (with_noise, noise_level, apply_logit, do_normalization,
+                                          normalization)
+        """
+
+        # dataset specific
+        self.layer_size = {'2': 9 * 16, '3': 18 * 50}[which_ds]
+        self.depth = 45
+
+        self.full_file = h5py.File(path_to_file, 'r')
+
+        self.noise_level = preprocessing_kwargs.get('noise_level', 1e-4) # in MeV
+        self.with_noise = preprocessing_kwargs.get('with_noise', True)
+
+        showers = self.full_file['showers'][beginning_idx:beginning_idx+data_length]
+        incident_energies = self.full_file['incident_energies']\
+            [beginning_idx:beginning_idx+data_length]
+        self.full_file.close()
+
+        self.E_dep = showers.reshape(-1, self.depth, self.layer_size).sum(axis=-1)
+
+        self.E_inc = incident_energies
+
+    def __len__(self):
+        # assuming file was written correctly
+        return len(self.E_dep)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        energy_dep = self.E_dep[idx]
+        e_inc = self.E_inc[idx]
+        if self.with_noise:
+            energy_dep = add_noise(energy_dep, noise_level=self.noise_level)
+
+        sample = {'energy_dep': energy_dep, 'energy_inc':e_inc}
+
+        return sample
+
 class UpCaloData(Dataset):
     """ Dataloader for upcalo step"""
     def __init__(self, path_to_file, which_ds='2',
@@ -84,9 +134,7 @@ class UpCaloData(Dataset):
         self.full_file = h5py.File(path_to_file, 'r')
 
         self.noise_level = preprocessing_kwargs.get('noise_level', 1e-4) # in MeV
-        #self.apply_logit = preprocessing_kwargs.get('apply_logit', True)
         self.with_noise = preprocessing_kwargs.get('with_noise', True)
-        #self.normalization = preprocessing_kwargs.get('normalization', None)
 
         showers = self.full_file['showers'][beginning_idx:beginning_idx+data_length]
         E_dep = showers.reshape(data_length, self.depth, 144).sum(axis=-1)
@@ -102,7 +150,6 @@ class UpCaloData(Dataset):
         coarse_showers = np.swapaxes(coarse_showers,4,5)
         coarse_showers = np.swapaxes(coarse_showers,3,4)
         coarse_showers = np.swapaxes(coarse_showers,2,3)
-        #coarse_showers = np.reshape(coarse_showers,(data_length,int(self.depth*self.num_alpha*self.num_radial/10),10))
 
 #################### conditioning on all neighbors ######################################
 
@@ -127,11 +174,6 @@ class UpCaloData(Dataset):
         self.full_file.close()
         self.fine_voxels = np.reshape(coarse_showers,(data_length*int(self.depth*self.num_alpha*self.num_radial/10),10))
 
-        #all_coarse = np.reshape(coarse_showers,(data_length,int(self.depth*self.num_alpha*self.num_radial/10),10))
-        #all_coarse = all_coarse.sum(axis=-1)
-        #self.all_coarse = np.repeat(all_coarse, int(self.depth*self.num_alpha*self.num_radial/10))
-        #self.coarse_energy = self.fine_voxels.sum(axis=-1)
-
 #################### conditioning on all neighbors ######################################
         self.fine_alpha_1 = np.reshape(coarse_adj_alpha_1,(data_length*int(self.depth*self.num_alpha*self.num_radial/10),10)) 
         self.fine_alpha_2 = np.reshape(coarse_adj_alpha_2,(data_length*int(self.depth*self.num_alpha*self.num_radial/10),10))
@@ -147,12 +189,6 @@ class UpCaloData(Dataset):
         for i in range(9):
             coarse_z += list(i*np.ones(72))
         self.coarse_z = np.tile(coarse_z,data_length)
-
-        # coarse_alpha = []
-        # for i in range(9):
-        #     for j in range(8):
-        #         coarse_alpha += list(j*np.ones(9))
-        # self.coarse_alpha = np.tile(coarse_alpha,data_length)
 
         r_label = []
         for i in range(9):
@@ -170,11 +206,9 @@ class UpCaloData(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        #energy_dep = self.E_dep[idx]
         e_inc = self.E_inc[idx]
         fine_voxels = self.fine_voxels[idx]
         energy_dep = self.E_dep[idx]
-        #coarse_voxels = self.coarse_energy[idx]
 
         #################### conditioning on all neighbors ######################################
         fine_alpha_1 = self.fine_alpha_1[idx]
@@ -184,10 +218,10 @@ class UpCaloData(Dataset):
         fine_z_1 = self.fine_z_1[idx]
         fine_z_2 = self.fine_z_2[idx]
         ###########################################################################################
-        #all_coarse = self.all_coarse[idx]
+
         z_labels  = self.coarse_z[idx]
         r_labels = self.r_label[idx]
-        #alpha_labels = self.coarse_alpha[idx]
+
         if self.with_noise:
             fine_voxels = add_noise(fine_voxels, noise_level=self.noise_level)
         coarse_voxels = fine_voxels.sum(axis=-1)
@@ -201,7 +235,6 @@ class UpCaloData(Dataset):
         coarse_energy_adj_z_2 = fine_z_2.sum(axis=-1)
         ###########################################################################################
         sample = {'z_labels': z_labels, 'r_labels': r_labels, 'coarse_voxels': coarse_voxels,'E_adj_r_1': coarse_energy_adj_r_1,'E_adj_r_2': coarse_energy_adj_r_2,'E_adj_z_1': coarse_energy_adj_z_1,'E_adj_z_2': coarse_energy_adj_z_2, 'E_adj_alpha_1': coarse_energy_adj_alpha_1, 'E_adj_alpha_2': coarse_energy_adj_alpha_2, 'fine_voxels': fine_voxels, 'energy_dep': energy_dep, 'energy_inc':e_inc}
-      #  sample = {'all_coarse': all_coarse, 'z_labels': z_labels, 'r_labels': r_labels, 'coarse_voxels': coarse_voxels,'fine_voxels': fine_voxels, 'energy_inc':e_inc}
 
         return sample
 
@@ -215,8 +248,6 @@ class CaloDataShowerShape(Dataset):
         Args:
             path_to_file (string): path to .hdf5 file
             which_ds ('2' or '3'): which dataset (kind of redundant with path_to_file name)
-            which_layer (int): which layers to include in data. -1 stands for all >0, non-negative
-                               integers return data of that layer alone. None returns all.
             beginning_idx (int): at which index to start taking the data from
             data_length (int): how many events to take
             preprocessing_kwargs (dict): dictionary containing parameters for preprocessing
@@ -233,15 +264,10 @@ class CaloDataShowerShape(Dataset):
 
         self.full_file = h5py.File(path_to_file, 'r')
 
-        # effectively a flow-2 vs flow-3 switch
-        #self.which_layer = which_layer
-
         self.noise_level = preprocessing_kwargs.get('noise_level', 1e-4) # in MeV
         self.apply_logit = preprocessing_kwargs.get('apply_logit', True)
         self.with_noise = preprocessing_kwargs.get('with_noise', True)
         self.do_normalization = preprocessing_kwargs.get('do_normalization', True)
-        #self.normalization = preprocessing_kwargs.get('normalization', 1.)
-
 
         showers = self.full_file['showers'][beginning_idx:beginning_idx+data_length]
         incident_energies = self.full_file['incident_energies']\
@@ -250,26 +276,8 @@ class CaloDataShowerShape(Dataset):
 
         self.E_inc = incident_energies
 
-        # self.E_dep = showers.reshape(-1, self.depth, self.layer_size).sum(axis=-1)
-
         showers = np.reshape(showers,(data_length,self.depth,self.num_alpha,self.num_radial))
-        # showers_first = showers[:,:5,:,:]
-        # showers_last = showers[:,5:,:,:]
 
-        # ############ first 5 layers ####################
-        # showers_first = showers_first.reshape(data_length,5,int(self.num_alpha/4),4,self.num_radial)
-        # showers_first = showers_first.reshape(data_length,5,int(self.num_alpha/4),4,int(self.num_radial/3),3)
-        # showers_first = np.swapaxes(showers_first,3,4)
-        # showers_first = showers_first.reshape(data_length,5,int(self.num_alpha/4),int(self.num_radial/3),12)
-        # showers_first = showers_first.reshape(data_length,5,int(self.num_alpha/4)*int(self.num_radial/3),12)
-        # showers_first = showers_first.sum(axis=-1)
-        # showers_first = add_noise(showers_first, noise_level=self.noise_level)
-
-        # showers_first_E = showers_first.sum(axis=-1)
-        # showers_first_norm = showers_first/6249#showers_first.sum(axis=-1,keepdims=True)
-        # showers_first_norm = showers_first_norm.reshape(data_length, 60)
-        ############ last 40 layers (8 coarse layers) ############
-        #showers_last = showers_last.reshape(data_length,40,self.num_alpha,self.num_radial)
         showers = showers.reshape(data_length,9,5,self.num_alpha,self.num_radial)
         showers = showers.reshape(data_length,9,5,int(self.num_alpha/2),2,self.num_radial)
         showers = np.swapaxes(showers,2,3)
@@ -281,7 +289,7 @@ class CaloDataShowerShape(Dataset):
         showers = add_noise(showers, noise_level=self.noise_level)
 
         showers_E = showers.sum(axis=-1)
-        showers_norm = showers/28048#showers_last.sum(axis=-1,keepdims=True)
+        showers_norm = showers/28048
         showers_norm = showers_norm.reshape(data_length, 648)
 
         self.Edep = showers_E
@@ -318,10 +326,10 @@ def get_calo_dataloader(path_to_file, which_flow, device, which_ds='2', batch_si
         test_length = int(0.3*data_length)
 
     if which_flow == 1:
-        train_dataset = UpCaloData(path_to_file, which_ds=which_ds,
+        train_dataset = CaloDataLayerEnergy(path_to_file, which_ds=which_ds,
                                             beginning_idx=0, data_length=train_length,
                                             **preprocessing_kwargs)
-        test_dataset = UpCaloData(path_to_file, which_ds=which_ds,
+        test_dataset = CaloDataLayerEnergy(path_to_file, which_ds=which_ds,
                                            beginning_idx=train_length, data_length=test_length,
                                            **preprocessing_kwargs)
     elif which_flow == 2:
@@ -347,7 +355,7 @@ def get_calo_dataloader(path_to_file, which_flow, device, which_ds='2', batch_si
 
 def get_coarse_voxels(path_to_file, device, which_ds='2', batch_size=32,
                         small_file=False, **preprocessing_kwargs):
-    """ returns train/test dataloader for training each of the flows """
+    """ returns coarse voxel information (+conditionals) required for upsampling """
     kwargs = {'num_workers': 2, 'pin_memory': True} if device.type == 'cuda' else {}
 
     if small_file:
@@ -365,7 +373,7 @@ def get_coarse_voxels(path_to_file, device, which_ds='2', batch_size=32,
 
 def get_flow2_data(path_to_file, device, which_ds='2', batch_size=32,
                         small_file=False, **preprocessing_kwargs):
-    """ returns train/test dataloader for training each of the flows """
+    """ returns true conditional info required to generate from flow-II """
     kwargs = {'num_workers': 2, 'pin_memory': True} if device.type == 'cuda' else {}
 
     if small_file:
