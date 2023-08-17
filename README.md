@@ -1,9 +1,9 @@
 # SuperCalo: Calorimeter shower super-resolution
-## by Ian Pang, Johan Andrew Raine and David Shih
+## by Ian Pang, John Andrew Raine and David Shih
 
 This repository contains the source code for reproducing the results of
 
-_"SuperCalo: Calorimeter shower super-resolution"_ by Ian Pang, Johan Andrew Raine and David Shih, [arxiv: 2308.xxxxx](https://arxiv.org/abs/2308.xxxxx)
+_"SuperCalo: Calorimeter shower super-resolution"_ by Ian Pang, John Andrew Raine and David Shih, [arxiv: 2308.xxxxx](https://arxiv.org/abs/2308.xxxxx)
 
 ### Running Flow-I, Flow-II and SuperCalo A
 
