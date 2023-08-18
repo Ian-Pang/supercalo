@@ -705,7 +705,7 @@ if __name__ == '__main__':
     if bin(args.which_flow)[-1] == '1':
         print("Working on Flow-I")
         print("Working on Flow-I", file=open(args.results_file, 'a'))
-        if args.train or args.evaluate:
+        if args.train:
                                                                                                                                                              
             train_loader_1, test_loader_1 = get_calo_dataloader(
                 os.path.join(args.data_dir, 'dataset_{}_1.hdf5'.format(args.which_ds)),
@@ -791,7 +791,7 @@ if __name__ == '__main__':
         print("Working on Flow 3")
         print("Working on Flow 3", file=open(args.results_file, 'a'))
 
-        if args.train or args.evaluate:
+        if args.train:
             train_loader_3, test_loader_3 = get_calo_dataloader(
                 os.path.join(args.data_dir, 'dataset_{}_1.hdf5'.format(args.which_ds)),
                 3, args.device,
