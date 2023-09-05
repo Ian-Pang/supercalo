@@ -32,14 +32,14 @@ To generate coarse showers from Flow-2 given true conditional inputs, run
 
 To train SuperCalo A, run
 
-'python run_supercalo.py --which_ds 2 --which_flow 4 --train --output_dir /path/to/output_directory --data_dir /path/to/data_directory --with_noise --noise_level 1e-4'
+`python run_supercalo.py --which_ds 2 --which_flow 4 --train --output_dir /path/to/output_directory --data_dir /path/to/data_directory --with_noise --noise_level 1e-4`
 
 To upsample from true coarse voxels using SuperCalo A, run
 
-'python run_supercalo.py --which_ds 2 --which_flow 4 --upsample --output_dir /path/to/output_directory --data_dir /path/to/data_directory --with_noise --noise_level 1e-4'
+`python run_supercalo.py --which_ds 2 --which_flow 4 --upsample --output_dir /path/to/output_directory --data_dir /path/to/data_directory --with_noise --noise_level 1e-4`
 
 #### Full chain (Flow-1 + Flow-2 + SuperCalo A)
 
 To generate using full chain, run
 
-'python run_supercalo.py --which_ds 2 --which_flow 4 --generate --output_dir /path/to/output_directory'
+`python run_supercalo.py --which_ds 2 --which_flow 4 --generate --output_dir /path/to/output_directory`
